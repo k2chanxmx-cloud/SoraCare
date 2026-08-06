@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime
 from typing import Any
 
@@ -9,6 +10,11 @@ from openai import OpenAI
 
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
+
+WEATHER_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+SUMMARY_CACHE: dict[str, tuple[float, str]] = {}
+WEATHER_CACHE_SECONDS = 600
+SUMMARY_CACHE_SECONDS = 7200
 
 LOCATIONS = {
     "koto": {"name": "江東区", "lat": 35.6729, "lon": 139.8171, "icon": "🏠"},
@@ -61,6 +67,10 @@ def pressure_status(pressures: list[float]) -> dict[str, Any]:
 
 
 def fetch_weather(location_key: str) -> dict[str, Any]:
+    cached = WEATHER_CACHE.get(location_key)
+    if cached and time.time() - cached[0] < WEATHER_CACHE_SECONDS:
+        return cached[1]
+
     loc = LOCATIONS.get(location_key, LOCATIONS["koto"])
     params = {
         "latitude": loc["lat"], "longitude": loc["lon"], "timezone": "Asia/Tokyo",
@@ -104,7 +114,7 @@ def fetch_weather(location_key: str) -> dict[str, Any]:
     if month in (11, 12, 1, 2, 3):
         heatshock = {"label": "警戒" if min_temp <= 5 else "注意" if min_temp <= 10 else "低い", "class": "warning" if min_temp <= 5 else "notice"}
 
-    return {
+    result = {
         "location": {"key": location_key, **loc},
         "updated_at": current_time.replace("T", " "),
         "current": {
@@ -125,6 +135,8 @@ def fetch_weather(location_key: str) -> dict[str, Any]:
         "pressure_status": pressure, "heat": heat, "heatshock": heatshock, "hours": hours,
         "pressure_source": "Open-Meteo（頭痛ーる連携へ差し替え可能）",
     }
+    WEATHER_CACHE[location_key] = (time.time(), result)
+    return result
 
 
 def fallback_summary(data: dict[str, Any]) -> str:
@@ -138,9 +150,16 @@ def fallback_summary(data: dict[str, Any]) -> str:
 
 
 def ai_summary(data: dict[str, Any]) -> str:
+    cache_key = data["location"]["key"]
+    cached = SUMMARY_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < SUMMARY_CACHE_SECONDS:
+        return cached[1]
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return fallback_summary(data)
+        summary = fallback_summary(data)
+        SUMMARY_CACHE[cache_key] = (time.time(), summary)
+        return summary
     prompt_data = {
         "場所": data["location"]["name"], "天気": data["current"]["weather"],
         "現在気温": data["current"]["temperature"], "体感温度": data["current"]["apparent"],
@@ -157,10 +176,14 @@ def ai_summary(data: dict[str, Any]) -> str:
             instructions="あなたは生活者向け天気アシスタントです。与えられた数値だけを使い、日本語で220〜300字。簡潔で親しみやすく、天気、気圧、暑さ寒さ、外出時間、持ち物をまとめる。診断や断定はしない。",
             input=json.dumps(prompt_data, ensure_ascii=False),
         )
-        return response.output_text.strip()[:330]
+        summary = response.output_text.strip()[:330]
+        SUMMARY_CACHE[cache_key] = (time.time(), summary)
+        return summary
     except Exception:
         app.logger.exception("AI summary failed")
-        return fallback_summary(data)
+        summary = fallback_summary(data)
+        SUMMARY_CACHE[cache_key] = (time.time(), summary)
+        return summary
 
 
 @app.get("/")
@@ -174,11 +197,23 @@ def weather_api(location_key: str):
         return jsonify({"error": "地域が見つかりません"}), 404
     try:
         data = fetch_weather(location_key)
-        data["summary"] = ai_summary(data)
+        data["summary"] = fallback_summary(data)
         return jsonify(data)
     except requests.RequestException:
         app.logger.exception("Weather API failed")
         return jsonify({"error": "天気情報を取得できませんでした。時間をおいて再読み込みしてください。"}), 502
+
+
+@app.get("/api/summary/<location_key>")
+def summary_api(location_key: str):
+    if location_key not in LOCATIONS:
+        return jsonify({"error": "地域が見つかりません"}), 404
+    try:
+        data = fetch_weather(location_key)
+        return jsonify({"summary": ai_summary(data)})
+    except requests.RequestException:
+        app.logger.exception("Summary weather fetch failed")
+        return jsonify({"summary": "AI総括を取得できませんでした。"}), 502
 
 
 @app.get("/manifest.json")

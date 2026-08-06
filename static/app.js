@@ -13,8 +13,20 @@ async function loadWeather(location = currentLocation){
     if(!res.ok) throw new Error(data.error || '取得に失敗しました');
     render(data);
     $('content').classList.remove('hidden');
+    loadSummary(location);
   }catch(e){ $('error').textContent=e.message; $('error').classList.remove('hidden'); }
   finally{$('loading').classList.add('hidden');}
+}
+
+async function loadSummary(location){
+  setText('summary', 'AIが今日の総括を作成しています…');
+  try{
+    const res = await fetch(`/api/summary/${location}`);
+    const data = await res.json();
+    if(location === currentLocation && data.summary) setText('summary', data.summary);
+  }catch(_e){
+    // 天気本体は表示済みなので、AI失敗時も画面を止めない
+  }
 }
 
 function render(d){
