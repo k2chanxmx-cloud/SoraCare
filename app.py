@@ -79,7 +79,7 @@ def fetch_weather(location_key: str) -> dict[str, Any]:
         "hourly": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,surface_pressure,uv_index",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_probability_max,sunrise,sunset",
     }
-    response = requests.get("https://api.open-meteo.com/v1/forecast", params=params, timeout=15)
+    response = requests.get("https://api.open-meteo.com/v1/forecast", params=params, timeout=8)
     response.raise_for_status()
     raw = response.json()
 
@@ -133,7 +133,7 @@ def fetch_weather(location_key: str) -> dict[str, Any]:
             "sunrise": raw["daily"]["sunrise"][0][11:16], "sunset": raw["daily"]["sunset"][0][11:16],
         },
         "pressure_status": pressure, "heat": heat, "heatshock": heatshock, "hours": hours,
-        "pressure_source": "Open-Meteo（頭痛ーる連携へ差し替え可能）",
+        "pressure_source": "Open-Meteo",
     }
     WEATHER_CACHE[location_key] = (time.time(), result)
     return result

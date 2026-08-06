@@ -1,45 +1,21 @@
-# SoraCare v1.1
+# SoraCare v1.3 Instant
 
-江東区・舞浜・表参道・渋谷・国分寺を切り替え、天気、時間別気圧、熱中症目安、冬季ヒートショック目安、約300字のAI総括を表示する、複数人利用向けの通知なしPWAです。
+通知なし・複数人利用向けの高速表示版です。
 
-## ローカル起動
-
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
-
-`http://127.0.0.1:5000` を開きます。OpenAI APIキーがなくても定型総括で動作します。
+## 改善点
+- PWA画面をキャッシュから即表示（Renderがスリープ中でも2回目以降は画面が開きやすい）
+- 前回取得した天気を端末内に保存し、起動直後に表示
+- 最新のOpen-Meteoデータはバックグラウンド更新
+- AI総括は天気表示後に別取得
+- API待ちに上限時間を設定
 
 ## Render
+Root Directory: `SoraCare_v1.3_instant`（リポジトリ直下の配置に応じて変更）
+Build Command: `pip install -r requirements.txt`
+Start Command: `gunicorn app:app --timeout 120`
 
-1. このフォルダをGitHubへアップロード
-2. RenderでBlueprintまたはWeb Serviceを作成
-3. AI総括を使う場合は `OPENAI_API_KEY` を登録
-
-必要な環境変数：
-
-```text
-OPENAI_API_KEY=作成したAPIキー
+## 環境変数
+OPENAI_API_KEY=あなたのAPIキー
 OPENAI_MODEL=gpt-5-mini
-```
 
-## 複数人利用
-
-ログイン・通知購読・個人データ保存はありません。同じURLを複数人で利用できます。端末ごとに最後に選んだ地域だけをブラウザ内へ保存します。
-
-## 気圧データ
-
-一般公開された頭痛ーる公式API仕様が確認できないため、Open-Meteoの時間別地上気圧を使用しています。正式な連携手段を利用できる場合は、`fetch_weather()` の取得部分を差し替えられます。
-
-## 注意
-
-熱中症・ヒートショック表示は生活上の目安であり、医療判断や公式警報の代替ではありません。
-
-## v1.2 高速化
-- 天気情報を先に表示し、AI総括は後から非同期で読み込みます。
-- 天気データを10分、AI総括を2時間サーバー内でキャッシュします。
-- Render無料枠のコールドスタート自体は解消できません。常時高速化には有料インスタンスが必要です。
+初回アクセスだけはRender無料枠のコールドスタートが発生する可能性があります。2回目以降はPWAキャッシュと端末保存データを先に表示します。
